@@ -475,6 +475,8 @@ m_pullup(n, len)
 	 * without shifting current data, pullup into it,
 	 * otherwise allocate a new mbuf to prepend to the chain.
 	 */
+
+    /* no cluster */
 	if ((n->m_flags & M_EXT) == 0 &&
 	    n->m_data + len < &n->m_dat[MLEN] && n->m_next) {
 		if (n->m_len >= len)
@@ -483,6 +485,7 @@ m_pullup(n, len)
 		n = n->m_next;
 		len -= m->m_len;
 	} else {
+        // has cluster
 		if (len > MHLEN)
 			goto bad;
 		MGET(m, M_DONTWAIT, n->m_type);
@@ -490,10 +493,12 @@ m_pullup(n, len)
 			goto bad;
 		m->m_len = 0;
 		if (n->m_flags & M_PKTHDR) {
+            // copy packet header to new one
 			M_COPY_PKTHDR(m, n);
 			n->m_flags &= ~M_PKTHDR;
 		}
 	}
+    // rest of space to place data
 	space = &m->m_dat[MLEN] - (m->m_data + m->m_len);
 	do {
 		count = min(min(max(len, max_protohdr), space), n->m_len);

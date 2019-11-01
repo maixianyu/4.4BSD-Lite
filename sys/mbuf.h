@@ -166,6 +166,8 @@ struct mbuf {
  *	MGETHDR(struct mbuf *m, int how, int type)
  * allocates an mbuf and initializes it to contain a packet header
  * and internal data.
+ *
+ * mbtypes[type], MT_XXX to M_XXX
  */
 #define	MGET(m, how, type) { \
 	MALLOC((m), struct mbuf *, MSIZE, mbtypes[type], (how)); \
