@@ -97,7 +97,7 @@ ip_output(m0, opt, ro, flags, imo)
 	if ((flags & (IP_FORWARDING|IP_RAWOUTPUT)) == 0) {
 		ip->ip_v = IPVERSION;
 		ip->ip_off &= IP_DF;
-		ip->ip_id = htons(ip_id++);
+		ip->ip_id = htons(ip_id++); // ip_id is global
 		ip->ip_hl = hlen >> 2;
 		ipstat.ips_localout++;
 	} else {
@@ -142,6 +142,7 @@ ip_output(m0, opt, ro, flags, imo)
 		ifp = ia->ia_ifp;
 		ip->ip_ttl = 1;
 	} else {
+        // local route
 		if (ro->ro_rt == 0)
 			rtalloc(ro);
 		if (ro->ro_rt == 0) {
@@ -149,12 +150,14 @@ ip_output(m0, opt, ro, flags, imo)
 			error = EHOSTUNREACH;
 			goto bad;
 		}
+
 		ia = ifatoia(ro->ro_rt->rt_ifa);
 		ifp = ro->ro_rt->rt_ifp;
 		ro->ro_rt->rt_use++;
 		if (ro->ro_rt->rt_flags & RTF_GATEWAY)
 			dst = (struct sockaddr_in *)ro->ro_rt->rt_gateway;
 	}
+
 	if (IN_MULTICAST(ntohl(ip->ip_dst.s_addr))) {
 		struct in_multi *inm;
 		extern struct ifnet loif;
@@ -298,6 +301,7 @@ sendit:
 		ipstat.ips_cantfrag++;
 		goto bad;
 	}
+    // len: ??
 	len = (ifp->if_mtu - hlen) &~ 7;
 	if (len < 8) {
 		error = EMSGSIZE;
@@ -314,6 +318,9 @@ sendit:
 	 */
 	m0 = m;
 	mhlen = sizeof (struct ip);
+
+    // ip comes from mbuf, so ip->ip_len is already set
+    // hlen: length of header of ip length, including options
 	for (off = hlen + len; off < (u_short)ip->ip_len; off += len) {
 		MGETHDR(m, M_DONTWAIT, MT_HEADER);
 		if (m == 0) {
@@ -324,12 +331,17 @@ sendit:
 		m->m_data += max_linkhdr;
 		mhip = mtod(m, struct ip *);
 		*mhip = *ip;
+
+        // hlen = length of default header + length of options in header
+        // so if ip has options
 		if (hlen > sizeof (struct ip)) {
 			mhlen = ip_optcopy(ip, mhip) + sizeof (struct ip);
 			mhip->ip_hl = mhlen >> 2;
 		}
 		m->m_len = mhlen;
+
 		mhip->ip_off = ((off - hlen) >> 3) + (ip->ip_off & ~IP_MF);
+        // if ip is IP_MF, then all
 		if (ip->ip_off & IP_MF)
 			mhip->ip_off |= IP_MF;
 		if (off + len >= (u_short)ip->ip_len)
@@ -337,6 +349,7 @@ sendit:
 		else
 			mhip->ip_off |= IP_MF;
 		mhip->ip_len = htons((u_short)(len + mhlen));
+
 		m->m_next = m_copy(m0, off, len);
 		if (m->m_next == 0) {
 			(void) m_free(m);
@@ -408,6 +421,7 @@ ip_insertoptions(m, opt, phlen)
 		return (m);		/* XXX should fail */
 	if (p->ipopt_dst.s_addr)
 		ip->ip_dst = p->ipopt_dst;
+
 	if (m->m_flags & M_EXT || m->m_data - optlen < m->m_pktdat) {
 		MGETHDR(n, M_DONTWAIT, MT_HEADER);
 		if (n == 0)
@@ -426,6 +440,7 @@ ip_insertoptions(m, opt, phlen)
 		m->m_pkthdr.len += optlen;
 		ovbcopy((caddr_t)ip, mtod(m, caddr_t), sizeof(struct ip));
 	}
+
 	ip = mtod(m, struct ip *);
 	bcopy((caddr_t)p->ipopt_list, (caddr_t)(ip + 1), (unsigned)optlen);
 	*phlen = sizeof(struct ip) + optlen;

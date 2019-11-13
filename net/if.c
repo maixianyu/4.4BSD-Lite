@@ -149,6 +149,8 @@ if_attach(ifp)
 		ifa->ifa_rtrequest = link_rtrequest;
 		ifp->if_addrlist = ifa;
 		ifa->ifa_addr = (struct sockaddr *)sdl;
+
+        /* Second: initialize the sockaddr_dr mask */
 		sdl = (struct sockaddr_dl *)(socksize + (caddr_t)sdl);
 		ifa->ifa_netmask = (struct sockaddr *)sdl;
 		sdl->sdl_len = masklen;
@@ -158,6 +160,8 @@ if_attach(ifp)
 	/* XXX -- Temporary fix before changing 10 ethernet drivers */
 	if (ifp->if_output == ether_output)
 		ether_ifattach(ifp);
+
+    /* final result: Pic 3-39 */
 }
 /*
  * Locate an interface based on a complete address.
@@ -195,7 +199,7 @@ ifa_ifwithdstaddr(addr)
 	register struct ifnet *ifp;
 	register struct ifaddr *ifa;
 
-	for (ifp = ifnet; ifp; ifp = ifp->if_next) 
+	for (ifp = ifnet; ifp; ifp = ifp->if_next)
 	    if (ifp->if_flags & IFF_POINTOPOINT)
 		for (ifa = ifp->if_addrlist; ifa; ifa = ifa->ifa_next) {
 			if (ifa->ifa_addr->sa_family != addr->sa_family)
@@ -612,7 +616,7 @@ ifconf(cmd, data)
 			if (error)
 				break;
 			space -= sizeof (ifr), ifrp++;
-		} else 
+		} else
 		    for ( ; space > sizeof (ifr) && ifa; ifa = ifa->ifa_next) {
 			register struct sockaddr *sa = ifa->ifa_addr;
 #ifdef COMPAT_43

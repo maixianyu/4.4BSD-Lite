@@ -296,6 +296,9 @@ m_copym(m, off0, len, wait)
 			copyhdr = 0;
 		}
 		n->m_len = min(len, m->m_len - off);
+
+        // if data is placed in cluster, then refer to it
+        // else copy data to mbuf new
 		if (m->m_flags & M_EXT) {
 			n->m_data = m->m_data + off;
 			mclrefcnt[mtocl(m->m_ext.ext_buf)]++;
@@ -304,6 +307,7 @@ m_copym(m, off0, len, wait)
 		} else
 			bcopy(mtod(m, caddr_t)+off, mtod(n, caddr_t),
 			    (unsigned)n->m_len);
+
 		if (len != M_COPYALL)
 			len -= n->m_len;
 		off = 0;
@@ -474,7 +478,11 @@ m_pullup(n, len)
 	 * If first mbuf has no cluster, and has room for len bytes
 	 * without shifting current data, pullup into it,
 	 * otherwise allocate a new mbuf to prepend to the chain.
+     *
+     * if any question, read 2.6.4 again
 	 */
+
+    /* len is total amount of data to pullup */
 
     /* no cluster */
 	if ((n->m_flags & M_EXT) == 0 &&
@@ -493,7 +501,7 @@ m_pullup(n, len)
 			goto bad;
 		m->m_len = 0;
 		if (n->m_flags & M_PKTHDR) {
-            // copy packet header to new one
+            // copy packet header(not data) to new one
 			M_COPY_PKTHDR(m, n);
 			n->m_flags &= ~M_PKTHDR;
 		}
@@ -501,22 +509,29 @@ m_pullup(n, len)
     // rest of space to place data
 	space = &m->m_dat[MLEN] - (m->m_data + m->m_len);
 	do {
+        // count is how many data is ok to copy
 		count = min(min(max(len, max_protohdr), space), n->m_len);
 		bcopy(mtod(n, caddr_t), mtod(m, caddr_t) + m->m_len,
 		  (unsigned)count);
+
 		len -= count;
 		m->m_len += count;
 		n->m_len -= count;
 		space -= count;
+
+        // update m_data pointer in n
 		if (n->m_len)
 			n->m_data += count;
 		else
 			n = m_free(n);
 	} while (len > 0 && n);
+
 	if (len > 0) {
 		(void) m_free(m);
 		goto bad;
 	}
+
+    // append n to m
 	m->m_next = n;
 	return (m);
 bad:
@@ -627,6 +642,7 @@ m_devget(buf, totlen, off0, ifp, copy)
 			}
 			m->m_len = MLEN;
 		}
+        // len: valid length of data to copy this time
 		len = min(totlen, epkt - cp);
 		if (len >= MINCLSIZE) {
 			MCLGET(m, M_DONTWAIT);

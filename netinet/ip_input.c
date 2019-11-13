@@ -177,6 +177,7 @@ next:
 		ipstat.ips_badvers++;
 		goto bad;
 	}
+    // ip_hl is measured by 4 bytes
 	hlen = ip->ip_hl << 2;
 	if (hlen < sizeof(struct ip)) {	/* minimum header length */
 		ipstat.ips_badhlen++;
@@ -238,9 +239,11 @@ next:
 	 */
 	for (ia = in_ifaddr; ia; ia = ia->ia_next) {
 #define	satosin(sa)	((struct sockaddr_in *)(sa))
-
+        // if point to point
 		if (IA_SIN(ia)->sin_addr.s_addr == ip->ip_dst.s_addr)
 			goto ours;
+
+        // if broadcast
 		if (
 #ifdef	DIRECTED_BROADCAST
 		    ia->ia_ifp == m->m_pkthdr.rcvif &&
@@ -264,6 +267,8 @@ next:
 				goto ours;
 		}
 	}
+
+    // if multicast
 	if (IN_MULTICAST(ntohl(ip->ip_dst.s_addr))) {
 		struct in_multi *inm;
 #ifdef MROUTING
@@ -640,14 +645,17 @@ ip_dooptions(m)
 	register u_char *cp;
 	register struct ip_timestamp *ipt;
 	register struct in_ifaddr *ia;
+    // code: offset where an error occurs
 	int opt, optlen, cnt, off, code, type = ICMP_PARAMPROB, forward = 0;
 	struct in_addr *sin, dst;
 	n_time ntime;
 
 	dst = ip->ip_dst;
 	cp = (u_char *)(ip + 1);
+    // cnt: option total length
 	cnt = (ip->ip_hl << 2) - sizeof (struct ip);
 	for (; cnt > 0; cnt -= optlen, cp += optlen) {
+        // get opt and optlen
 		opt = cp[IPOPT_OPTVAL];
 		if (opt == IPOPT_EOL)
 			break;
@@ -674,7 +682,10 @@ ip_dooptions(m)
 		 * component.  If strictly routed make sure next
 		 * address is on directly accessible net.
 		 */
+
+        /* loose source route */
 		case IPOPT_LSRR:
+        /* strict source route */
 		case IPOPT_SSRR:
 			if ((off = cp[IPOPT_OFFSET]) < IPOPT_MINOFF) {
 				code = &cp[IPOPT_OFFSET] - (u_char *)ip;
@@ -723,6 +734,7 @@ ip_dooptions(m)
 			ip->ip_dst = ipaddr.sin_addr;
 			bcopy((caddr_t)&(IA_SIN(ia)->sin_addr),
 			    (caddr_t)(cp + off), sizeof(struct in_addr));
+            // update the ip option length
 			cp[IPOPT_OFFSET] += sizeof(struct in_addr);
 			/*
 			 * Let ip_intr's mcast routing check handle mcast pkts
@@ -730,6 +742,7 @@ ip_dooptions(m)
 			forward = !IN_MULTICAST(ntohl(ip->ip_dst.s_addr));
 			break;
 
+        /* record packet route */
 		case IPOPT_RR:
 			if ((off = cp[IPOPT_OFFSET]) < IPOPT_MINOFF) {
 				code = &cp[IPOPT_OFFSET] - (u_char *)ip;
@@ -758,6 +771,7 @@ ip_dooptions(m)
 			cp[IPOPT_OFFSET] += sizeof(struct in_addr);
 			break;
 
+        /* timestamp */
 		case IPOPT_TS:
 			code = cp - (u_char *)ip;
 			ipt = (struct ip_timestamp *)cp;
@@ -771,9 +785,11 @@ ip_dooptions(m)
 			sin = (struct in_addr *)(cp + ipt->ipt_ptr - 1);
 			switch (ipt->ipt_flg) {
 
+            /* timestamps only */
 			case IPOPT_TS_TSONLY:
 				break;
 
+            /* timestamps and addresses */
 			case IPOPT_TS_TSANDADDR:
 				if (ipt->ipt_ptr + sizeof(n_time) +
 				    sizeof(struct in_addr) > ipt->ipt_len)
@@ -788,6 +804,7 @@ ip_dooptions(m)
 				ipt->ipt_ptr += sizeof(struct in_addr);
 				break;
 
+            /* specified modules only */
 			case IPOPT_TS_PRESPEC:
 				if (ipt->ipt_ptr + sizeof(n_time) +
 				    sizeof(struct in_addr) > ipt->ipt_len)
@@ -1009,25 +1026,34 @@ ip_forward(m, srcrt)
 		printf("forward: src %x dst %x ttl %x\n", ip->ip_src,
 			ip->ip_dst, ip->ip_ttl);
 #endif
+    // drop broadcast packet, or loopback packet, or E class packet
 	if (m->m_flags & M_BCAST || in_canforward(ip->ip_dst) == 0) {
 		ipstat.ips_cantforward++;
 		m_freem(m);
 		return;
 	}
 	HTONS(ip->ip_id);
+
+    // update TTL
 	if (ip->ip_ttl <= IPTTLDEC) {
+        // send ICMP timeout
 		icmp_error(m, ICMP_TIMXCEED, ICMP_TIMXCEED_INTRANS, dest, 0);
 		return;
 	}
 	ip->ip_ttl -= IPTTLDEC;
 
+    // locate the next destination
 	sin = (struct sockaddr_in *)&ipforward_rt.ro_dst;
+    // if cache(ipforward_rt.ro_rt) is null, or current dst is not the same
 	if ((rt = ipforward_rt.ro_rt) == 0 ||
 	    ip->ip_dst.s_addr != sin->sin_addr.s_addr) {
+        // reset
 		if (ipforward_rt.ro_rt) {
 			RTFREE(ipforward_rt.ro_rt);
 			ipforward_rt.ro_rt = 0;
 		}
+
+        // re-locate the new route according to the new dst addr (sin)
 		sin->sin_family = AF_INET;
 		sin->sin_len = sizeof(*sin);
 		sin->sin_addr = ip->ip_dst;
@@ -1059,13 +1085,20 @@ ip_forward(m, srcrt)
 	 * or a route modified by a redirect.
 	 */
 #define	satosin(sa)	((struct sockaddr_in *)(sa))
+    // leave from receive interface? rt_ifp == rcvif
+    // route has not been modified by ICMP? RTF_DYNAMIC|RTF_MODIFIED
+    // s_addr is not directed to default dst 0? s_addr != 0
+    // ipsendredirects, allowed to send re-direct packet?
+    // srcrt,
 	if (rt->rt_ifp == m->m_pkthdr.rcvif &&
 	    (rt->rt_flags & (RTF_DYNAMIC|RTF_MODIFIED)) == 0 &&
 	    satosin(rt_key(rt))->sin_addr.s_addr != 0 &&
 	    ipsendredirects && !srcrt) {
+
 #define	RTA(rt)	((struct in_ifaddr *)(rt->rt_ifa))
 		u_long src = ntohl(ip->ip_src.s_addr);
 
+        // to choose a route
 		if (RTA(rt) &&
 		    (src & RTA(rt)->ia_subnetmask) == RTA(rt)->ia_subnet) {
 		    if (rt->rt_flags & RTF_GATEWAY)
@@ -1082,6 +1115,7 @@ ip_forward(m, srcrt)
 		}
 	}
 
+    // forward packet
 	error = ip_output(m, (struct mbuf *)0, &ipforward_rt, IP_FORWARDING
 #ifdef DIRECTED_BROADCAST
 			    | IP_ALLOWBROADCAST
@@ -1099,10 +1133,12 @@ ip_forward(m, srcrt)
 			return;
 		}
 	}
+
 	if (mcopy == NULL)
 		return;
 	destifp = NULL;
 
+    // send ICMP packet
 	switch (error) {
 
 	case 0:				/* forwarded, but need redirect */

@@ -179,6 +179,7 @@ in_control(so, cmd, data, ifp)
 			if (ia->ia_ifp == ifp)
 				break;
 
+    // establish preconditions for commands
 	switch (cmd) {
 
 	case SIOCAIFADDR:
@@ -193,6 +194,8 @@ in_control(so, cmd, data, ifp)
 		if (cmd == SIOCDIFADDR && ia == 0)
 			return (EADDRNOTAVAIL);
 		/* FALLTHROUGH */
+
+    // IFADDR, IFNETMAST, IFDSTADDR
 	case SIOCSIFADDR:
 	case SIOCSIFNETMASK:
 	case SIOCSIFDSTADDR:
@@ -202,6 +205,7 @@ in_control(so, cmd, data, ifp)
 		if (ifp == 0)
 			panic("in_control");
 		if (ia == (struct in_ifaddr *)0) {
+            // malloc a new in_ifaddr, and append it to existing list
 			oia = (struct in_ifaddr *)
 				malloc(sizeof *oia, M_IFADDR, M_WAITOK);
 			if (oia == (struct in_ifaddr *)NULL)
@@ -214,12 +218,15 @@ in_control(so, cmd, data, ifp)
 			} else
 				in_ifaddr = oia;
 			ia = oia;
+
+            // append it to if_addrlist
 			if (ifa = ifp->if_addrlist) {
 				for ( ; ifa->ifa_next; ifa = ifa->ifa_next)
 					continue;
 				ifa->ifa_next = (struct ifaddr *) ia;
 			} else
 				ifp->if_addrlist = (struct ifaddr *) ia;
+
 			ia->ia_ifa.ifa_addr = (struct sockaddr *)&ia->ia_addr;
 			ia->ia_ifa.ifa_dstaddr
 					= (struct sockaddr *)&ia->ia_dstaddr;
@@ -249,6 +256,8 @@ in_control(so, cmd, data, ifp)
 			return (EADDRNOTAVAIL);
 		break;
 	}
+
+    // perform the commands
 	switch (cmd) {
 
 	case SIOCGIFADDR:

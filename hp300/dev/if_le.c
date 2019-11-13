@@ -426,13 +426,15 @@ lestart(ifp)
 			le->sc_xown2++;
 			return (0);
 		}
+        // get mbuf from queue
 		IF_DEQUEUE(&le->sc_if.if_snd, m);
 		if (m == 0)
 			return (0);
+
 		len = leput(le->sc_r2->ler2_tbuf[le->sc_tmd], m);
 #if NBPFILTER > 0
-		/* 
-		 * If bpf is listening on this interface, let it 
+		/*
+		 * If bpf is listening on this interface, let it
 		 * see the packet before we commit it to the wire.
 		 */
 		if (ifp->if_bpf)
@@ -774,12 +776,12 @@ leioctl(ifp, cmd, data)
 			if (ns_nullhost(*ina))
 				ina->x_host = *(union ns_host *)(le->sc_addr);
 			else {
-				/* 
-				 * The manual says we can't change the address 
+				/*
+				 * The manual says we can't change the address
 				 * while the receiver is armed,
 				 * so reset everything
 				 */
-				ifp->if_flags &= ~IFF_RUNNING; 
+				ifp->if_flags &= ~IFF_RUNNING;
 				LERDWR(le->sc_r0, LE_STOP, ler1->ler1_rdp);
 				bcopy((caddr_t)ina->x_host.c_host,
 				    (caddr_t)le->sc_addr, sizeof(le->sc_addr));

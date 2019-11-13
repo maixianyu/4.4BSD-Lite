@@ -67,7 +67,7 @@
  */
 struct	mbuf;
 struct	proc;
-struct	rtentry;	
+struct	rtentry;
 struct	socket;
 struct	ether_header;
 #endif
@@ -82,18 +82,19 @@ struct	ether_header;
  */
 
 struct ifnet {
+/* implementation info */
 	char	*if_name;		/* name, e.g. ``en'' or ``lo'' */
 	struct	ifnet *if_next;		/* all struct ifnets are chained */
 	struct	ifaddr *if_addrlist;	/* linked list of addresses per if */
         int	if_pcount;		/* number of promiscuous listeners */
 	caddr_t	if_bpf;			/* packet filter structure */
-	u_short	if_index;		/* numeric abbreviation for this if  */
-	short	if_unit;		/* sub-unit for lower level driver */
+	u_short	if_index;		/* numeric abbreviation for this if, each is unique */
+	short	if_unit;		/* sub-unit for lower level driver, 0, 1, 2, ... */
 	short	if_timer;		/* time 'til if_watchdog called */
-	short	if_flags;		/* up/down, broadcast, etc. */
+	short	if_flags;		/* up/down, broadcast, etc. refer to Pic 3-7 */
 	struct	if_data {
 /* generic interface information */
-		u_char	ifi_type;	/* ethernet, tokenring, etc */
+		u_char	ifi_type;	/* ethernet, tokenring, LOOP, SLIP etc */
 		u_char	ifi_addrlen;	/* media address length */
 		u_char	ifi_hdrlen;	/* media header length */
 		u_long	ifi_mtu;	/* maximum transmission unit */
@@ -114,6 +115,7 @@ struct ifnet {
 		struct	timeval ifi_lastchange;/* last updated */
 	}	if_data;
 /* procedure handles */
+/* interface function */
 	int	(*if_init)		/* init routine */
 		__P((int));
 	int	(*if_output)		/* output routine (enqueue) */
@@ -125,7 +127,7 @@ struct ifnet {
 		__P((struct ifnet *));	/* (XXX not used; fake prototype) */
 	int	(*if_ioctl)		/* ioctl routine */
 		__P((struct ifnet *, int, caddr_t));
-	int	(*if_reset)	
+	int	(*if_reset)
 		__P((int));		/* new autoconfig will permit removal */
 	int	(*if_watchdog)		/* timer routine */
 		__P((int));
